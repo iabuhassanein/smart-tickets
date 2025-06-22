@@ -1,0 +1,80 @@
+version: '3.8'
+services:
+  # Application PHP-FPM
+  app:
+    build:
+      context: ./
+      dockerfile: stack/docker/development/php/app.dockerfile
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    networks:
+      - smart_tickets
+    depends_on:
+      - "database"
+
+  # Web server NGINX
+  web:
+    build:
+      context: ./
+      dockerfile: stack/docker/development/nginx/app.dockerfile
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    networks:
+      - smart_tickets
+    ports:
+      - "80:80"
+
+  node:
+    image: node:22
+    restart: "no"
+    working_dir: /var/www
+    environment:
+      - NODE_ENV=${APP_ENV}
+    volumes:
+      - .:/var/www
+    command: "npm run dev"
+    networks:
+      - smart_tickets
+    ports:
+      - "5173:5173"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Database MySql
+  database:
+    image: mysql:8.0.32
+    volumes:
+      - dbdata:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+    networks:
+      - smart_tickets
+    ports:
+      - "33061:3306"
+
+  # PhpMyAdmin Panel
+  pma:
+    image: phpmyadmin:5.1
+    environment:
+      - PMA_ARBITRARY=1
+    depends_on:
+      - database
+    networks:
+      - smart_tickets
+    ports:
+      - "8888:80"
+
+networks:
+    smart_tickets:
+        driver: bridge
+
+volumes:
+    dbdata:
+      driver: local
+    redis:
+      driver: local
