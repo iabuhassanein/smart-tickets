@@ -23,7 +23,7 @@ class TicketClassifier implements TicketClassifierInterface
                 'messages' => [
                     ['role' => "system", 'content' => "You are a support ticket classifier. Analyze the provided support ticket and classify it into the most appropriate category.
 
-## Categories (USE EXACTLY THESE NAMES):".$catPrompt."
+## Categories (USE EXACTLY THESE NAMES):" . $catPrompt . "
 
 ## CRITICAL REQUIREMENT:
 You MUST use ONLY the exact category names listed above. Do NOT create variations or similar names.
@@ -63,13 +63,13 @@ IMPORTANT: Your response must use one of these exact 12 category names: technica
 
 
                     ['role' => 'user', 'content' => "
-                - Ticket Subject: ".$ticket->getSubject()."
-                - Ticket Content: ".$ticket->getBody()."
+                - Ticket Subject: " . $ticket->getSubject() . "
+                - Ticket Content: " . $ticket->getBody() . "
                 "],
                 ],
             ]);
 
-            $res =  $result->choices[0]->message->content;
+            $res = $result->choices[0]->message->content;
             $arrayResult = $this->parseResponse($res);
             return ['success' => true, ...$arrayResult];
         } catch (Exception $e) {
@@ -111,6 +111,78 @@ IMPORTANT: Your response must use one of these exact 12 category names: technica
         return [
             'success' => true,
             'category' => $randomCategory,
+            'explanation' => 'This is a dummy classification generated for testing purposes.',
+            'confidence' => rand(50, 100) / 100,
+        ];
+    }
+
+    public function explainCategoryChoice(Ticket $ticket, string $manualCategory): array
+    {
+        // when OPENAI_CLASSIFY_ENABLED=false, return dummy explanation
+        if (!config('openai.classify_enabled'))
+            return $this->dummyExplain($manualCategory);
+        try {
+            $catPrompt = TicketCategory::getCategoriesForSystemPrompt();
+            $result = OpenAI::chat()->create([
+                'model' => 'gpt-4o-mini',
+                'messages' => [
+                    ['role' => "system", 'content' => "You are a support ticket analysis expert. A human has manually categorized a support ticket, and you need to analyze whether this categorization makes sense and explain the reasoning.
+
+## Available Categories:" . $catPrompt . "
+
+## Your Task:
+Analyze the provided ticket content and the human-assigned category. Then:
+1. Evaluate if the assigned category fits the ticket content
+2. Provide a detailed explanation of why this category choice makes sense (or doesn't)
+3. Rate your confidence in this categorization from 0.1 to 1.0
+
+## Response Format:
+Always respond with valid JSON containing exactly these 3 keys:
+```json
+{
+  'category': 'technical_support',
+  'explanation': 'Brief reason for this classification',
+  'confidence': 0.85
+}
+```
+
+## Guidelines:
+- Focus on explaining the reasoning behind the assigned category
+- If the category seems appropriate, explain what aspects of the ticket support this choice
+- If the category seems questionable, explain what might be concerning while being respectful
+- Use high confidence (0.8+) when the category clearly fits
+- Use medium confidence (0.5-0.7) when the category is reasonable but not perfect
+- Use low confidence (0.1-0.4) when the category seems mismatched
+- Keep explanations informative and constructive"],
+
+                    ['role' => 'user', 'content' => "
+                Please analyze this ticket and the manually assigned category:
+
+                - Ticket Subject: " . $ticket->getSubject() . "
+                - Ticket Content: " . $ticket->getBody() . "
+                - Manually Assigned Category: " . $manualCategory . "
+
+                Explain why this category assignment makes sense and rate your confidence in it."],
+                ],
+            ]);
+
+            $res = $result->choices[0]->message->content;
+            $arrayResult = $this->parseResponse($res);
+            return ['success' => true, ...$arrayResult];
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'code' => $e->getCode(),
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    function dummyExplain($manualCategory): array
+    {
+        return [
+            'success' => true,
+            'category' => $manualCategory,
             'explanation' => 'This is a dummy classification generated for testing purposes.',
             'confidence' => rand(50, 100) / 100,
         ];

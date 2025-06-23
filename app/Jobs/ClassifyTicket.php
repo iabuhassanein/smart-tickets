@@ -31,13 +31,19 @@ class ClassifyTicket implements ShouldQueue
      */
     public function handle(TicketClassifierInterface $service): void
     {
-        $response = $service->classifyTicket($this->ticket);
+        // in this part I did it because of this sentence from the task document
+        // "If a user has already changed category, keep the manual value but still update explanation & confidence."
+        // so this will explain the manual category choice with confidence and explanation.
+        if ($this->ticket->isOverride())
+            $response = $service->explainCategoryChoice($this->ticket, $this->ticket->getCategory()->value);
+        else
+            $response = $service->classifyTicket($this->ticket);
         if ($response['success']) {
             $this->dispatchCommand(new UpdateTicket($this->ticket, [
                 'category' => $response['category'],
                 'explanation' => $response['explanation'],
                 'confidence' => $response['confidence'],
-                'isOverride' => false
+//                'isOverride' => false
             ]));
 
             Cache::put("ticket_classification_{$this->ticket->getId()}", 'finished', 300); // 5 minutes TTL
